@@ -1,9 +1,7 @@
 #include <cstdio>
 #include <algorithm>
-#include "factories.h"
 #include <vector>
-#include <set>
-#include <queue>
+#include <stack>
 
 #define X first
 #define Y second
@@ -12,201 +10,137 @@ using namespace std;
 
 typedef long long ll;
 typedef pair<int, ll> P;
-typedef pair<int, int> P2;
 
 const int LOG = 19, MAX = 1<<LOG;
 const ll INF = 1e18;
 
-int br;
-int dub[MAX];
-int disc[MAX], vrijeme;
-P lca[LOG][MAX];
-vector <P> V[MAX];
-
 struct str {
   int node;
-  ll val[2];
-  str (int _n, ll v0, ll v1) {
-    node = _n;
-    val[0] = v0;
-    val[1] = v1;
-  }
+  ll min0, min1;
+  str (int node, ll min0, ll min1) : node(node), min0(min0), min1(min1) {}
   str () {}
 };
 
-bool operator < (const str &a, const str &b)
+int lca[MAX][LOG];
+int dub[MAX];
+int disc[MAX], fin[MAX];
+int vr;
+ll gore[MAX];
+vector <P> V[MAX];
+stack <str> S;
+
+bool Manji(const str &a, const str &b)
 {
   return disc[a.node] < disc[b.node];
 }
 
-set <str> SN;
-priority_queue <P2> SUd;
-
-void DfsPoc(int node, int prosli, int c)
+void DfsPoc(int node, int prosli, ll prosval)
 {
   dub[node] = dub[prosli] + 1;
-  disc[node] = ++vrijeme;
+  gore[node] = gore[prosli] + prosval;
+  disc[node] = vr++;
 
-  lca[0][node] = P(prosli, c);
+  lca[node][0] = prosli;
   for (int i=1; i<LOG; i++)
-    lca[i][node] = P(lca[i-1][lca[i-1][node].X].X, lca[i-1][lca[i-1][node].X].Y + lca[i-1][node].Y);
+    lca[node][i] = lca[lca[node][i-1]][i-1];
 
   for (int i=0; i<(int) V[node].size(); i++)
     if (V[node][i].X != prosli)
-      DfsPoc(V[node][i].X, node, (int) V[node][i].Y);
+      DfsPoc(V[node][i].X, node, V[node][i].Y);
+
+  fin[node] = vr++;
 }
 
-void Init(int N, int A[], int B[], int D[]) {
-  for (int i=0; i<N-1; i++) {
-    V[A[i]].push_back(P(B[i], D[i]));
-    V[B[i]].push_back(P(A[i], D[i]));
-  }
-  
-  DfsPoc(0, 0, 0);
-}
-
-P Lca(int a, int b)
+int Lca(int a, int b)
 {
   if (dub[a] > dub[b])
     swap(a, b);
-
+  
   int raz = dub[b] - dub[a];
-  ll ret = 0;
 
-  for (int i=0; raz; i++, raz /= 2) {
-    if (raz & 1) {
-      P t = lca[i][b];
-      ret += t.Y;
-      b = t.X;
-    }
-  }
+  for (int i=0; raz; i++, raz /= 2)
+    if (raz & 1)
+      b = lca[b][i];
 
   if (a == b)
-    return P(a, ret);
+    return a;
 
   for (int i=LOG-1; i>=0; i--) {
-    if (lca[i][a].X != lca[i][b].X) {
-      P ta = lca[i][a], tb = lca[i][b];
-      ret += ta.Y + tb.Y;
-      a = ta.X;
-      b = tb.X;
+    if (lca[a][i] != lca[b][i]) {
+      a = lca[a][i];
+      b = lca[b][i];
     }
   }
-  
-  return P(lca[0][a].X, ret + lca[0][a].Y + lca[0][b].Y);
+
+  return lca[a][0];
 }
 
-void Stavi(const set <str> :: iterator &it)
+str Merge(str a, str b)
 {
-  set <str> :: iterator it2 = it;
-
-  if (it != SN.begin()) {
-    it2 = it; it2--;
-    P lc = Lca(it->node, it2->node);
-    SUd.push(P2(dub[lc.X], it2->node));
-  }
-  it2 = it; it2++;
-  if (it2 != SN.end()) {
-    P lc = Lca(it->node, it2->node);
-    SUd.push(P2(dub[lc.X], it->node));
-  }
+  int lc = Lca(a.node, b.node);
+  return str(lc, min(INF, min(a.min0 + gore[a.node] - gore[lc], b.min0 + gore[b.node] - gore[lc])),
+                 min(INF, min(a.min1 + gore[a.node] - gore[lc], b.min1 + gore[b.node] - gore[lc])) );
 }
 
-ll Rijesi()
+void Init(int n, int a[], int b[], int d[])
+{
+  for (int i=0; i<n-1; i++) {
+    V[a[i]].push_back(P(b[i], d[i]));
+    V[b[i]].push_back(P(a[i], d[i]));
+  }
+
+  DfsPoc(0, 0, 0);
+}
+
+ll Query(int s, int x[], int t, int y[])
 {
   ll ret = INF;
+  vector <str> T;
 
-  for (set <str> :: iterator it1 = SN.begin(); it1 != SN.end(); it1++) {
-    set <str> :: iterator it2 = it1;
-    it2++;
-    if (it2 != SN.end()) {
-      P lc = Lca(it1->node, it2->node);
-      SUd.push(P2(dub[lc.X], it1->node));
-    }
-  }
+  for (int i=0; i<s; i++)
+    T.push_back(str(x[i], 0, INF));
 
-  for (; SN.size() > 1; ) {
-    P2 tmp = SUd.top();
-    SUd.pop();
+  for (int i=0; i<t; i++)
+    T.push_back(str(y[i], INF, 0));
+
+  sort(T.begin(), T.end(), Manji);
   
-   // printf("SZ %u %u\n", SN.size(), SUd.size());
-
-  
-    set <str> :: iterator it1 = SN.find(str(tmp.Y, 0, 0));
-    set <str> :: iterator it2 = it1; it2++;
-
-    if (it1 == SN.end() || it2 == SN.end())
-      continue;
-
-    P lc = Lca(it1->node, it2->node);
-    if (dub[lc.X] != tmp.X)
-      continue;
-    ret = min(ret, it1->val[0] + it2->val[1] + lc.Y);
-    ret = min(ret, it1->val[1] + it2->val[0] + lc.Y);
-    
-    ll dist1 = Lca(it1->node, lc.X).Y;
-    ll dist2 = Lca(it2->node, lc.X).Y;
-    ll v0 = min(dist1 + it1->val[0], dist2 + it2->val[0]);
-    ll v1 = min(dist1 + it1->val[1], dist2 + it2->val[1]);
-
-    set <str> :: iterator it = SN.find(str(lc.X, 0, 0));
-
-    if (it == SN.end()) {
-      SN.erase(it1);
-      SN.erase(it2);
-      SN.insert(str(lc.X, min(INF, v0), min(INF, v1)));
-    }
-    else {
-      ret = min(ret, v0 + it->val[1]);
-      ret = min(ret, v1 + it->val[0]);
-      str novi = str(lc.X, min(INF, min(v0, it->val[0])), min(INF, min(v1, it->val[1])));
-      int da = 0;
-      if (it != it1 && it != it2)
-        da = 1;
-
-      SN.erase(it1);
-      SN.erase(it2);
-      if (da)
-        SN.erase(it);      
-
-      /*int iii=0;
-      for (set <str> :: iterator itt = SN.begin(); itt != SN.end(); itt++, iii++) {
-          set <str> :: iterator asd = itt;
-          asd++;
-          if (asd == itt)
-            printf("AAA\n");
-//        printf("II %d\n", iii);
-  //      printf("ITTT %d %d   %lld %lld\n", ittt->node, disc[ittt->node], ittt->val[0], ittt->val[1]);
+  str zadnji = str(-1, -1, -1);
+  for (int i=0; i<(int) T.size(); i++) {
+    for (;;) {
+      str tmp = T[i];
+      if (S.empty() || fin[S.top().node] > disc[tmp.node]) {
+        if (zadnji.node != -1) {
+          S.push(Merge(zadnji, tmp));
+          zadnji = str(-1, -1, -1);
+        }
+        S.push(tmp);
+        break;
       }
-
-      printf("DDD\n");
-      printf("INSB %d %d\n", novi.node, disc[novi.node]);      */
-      SN.insert(novi);
+      else {
+        zadnji = S.top();
+        ret = min(ret, zadnji.min0 + zadnji.min1);
+        S.pop();
+        if (!S.empty()) {
+          str tmp = S.top();
+          S.pop();
+          S.push(Merge(tmp, zadnji));
+        }
+      }
     }
-
-    Stavi(SN.find(str(lc.X, 0, 0)));
   }
 
+  for (; !S.empty(); ) {        
+    zadnji = S.top();
+    ret = min(ret, zadnji.min0 + zadnji.min1);
+    S.pop();
+    if (!S.empty()) {
+      str tmp = S.top();
+      S.pop();
+      S.push(Merge(tmp, zadnji));
+      str abc = S.top();
+    }
+  }
+ 
   return ret;
 }
-
-long long Query(int S, int X[], int T, int Y[]) {
-  SN.clear();
-  for (; !SUd.empty(); )
-    SUd.pop();
-
-  for (int i=0; i<S; i++) {
-//    printf("INSX %d %d\n", X[i], disc[X[i]]);
-    SN.insert(str(X[i], 0, INF));
-  }
-
-  for (int i=0; i<T; i++) {
-  //  printf("INSY %d %d\n", Y[i], disc[Y[i]]);
-    SN.insert(str(Y[i], INF, 0));
-  }
-
-//  printf("DAAAA\n");
-
-  return Rijesi();
-}
-
